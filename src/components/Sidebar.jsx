@@ -21,8 +21,24 @@ const treeAnimation = {
   transition: { duration: 0.18, ease: 'easeOut' },
 };
 
+const TreeSkeleton = () => (
+  <div className="space-y-2.5 px-2 pt-1" aria-hidden="true">
+    {[70, 55, 80, 60, 45].map((w, i) => (
+      <div key={i} className="flex items-center gap-2" style={{ paddingLeft: i % 3 === 0 ? 0 : 18 }}>
+        <div className="w-3.5 h-3.5 rounded bg-slate-800 animate-pulse" />
+        <div className="h-3 rounded bg-slate-800 animate-pulse" style={{ width: `${w}%` }} />
+      </div>
+    ))}
+  </div>
+);
+
 const RequestRow = ({ req, isSelected, lock, typingUser, canEdit, onSelect, onDelete }) => (
-  <div
+  <motion.div
+    layout="position"
+    initial={{ opacity: 0, x: -6 }}
+    animate={{ opacity: 1, x: 0 }}
+    exit={{ opacity: 0, x: -10, height: 0 }}
+    transition={{ duration: 0.15 }}
     onClick={() => onSelect(req)}
     className={`group flex items-center justify-between gap-2 pl-2 pr-1.5 py-1 rounded-md text-xs cursor-pointer transition-colors ${
       isSelected
@@ -57,7 +73,7 @@ const RequestRow = ({ req, isSelected, lock, typingUser, canEdit, onSelect, onDe
         <X className="w-3 h-3" />
       </button>
     )}
-  </div>
+  </motion.div>
 );
 
 const TreeRowButton = ({ children, onClick, title, tone = 'default' }) => (
@@ -118,6 +134,7 @@ export const Sidebar = ({
   canEdit,
   lockedRequests = {},
   typingUsers = {},
+  loading = false,
 }) => {
   const reduceMotion = useReducedMotion();
   const [expandedCollections, setExpandedCollections] = useState({});
@@ -228,7 +245,9 @@ export const Sidebar = ({
           )}
         </div>
 
-        {collections.length === 0 ? (
+        {loading ? (
+          <TreeSkeleton />
+        ) : collections.length === 0 ? (
           <div className="px-3 py-6 text-center text-xs text-slate-500">
             No collections yet. Click "Add" to create your first collection.
           </div>
@@ -253,7 +272,9 @@ export const Sidebar = ({
                     icon={Folder}
                     label={col.name}
                     trailing={
-                      canEdit && (
+                      <>
+                      <span className="text-[10px] font-mono text-slate-600 group-hover:hidden px-1">{allRequests.length}</span>
+                      {canEdit && (
                         <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                           <TreeRowButton onClick={() => onCreateRequest(col.id, null)} title="Add request to collection">
                             <Plus className="w-3.5 h-3.5" />
@@ -265,7 +286,8 @@ export const Sidebar = ({
                             <Trash2 className="w-3.5 h-3.5" />
                           </TreeRowButton>
                         </div>
-                      )
+                      )}
+                      </>
                     }
                   />
 
@@ -307,9 +329,11 @@ export const Sidebar = ({
                                     {...(reduceMotion ? {} : treeAnimation)}
                                     className="overflow-hidden ml-3 pl-2 border-l border-slate-800 space-y-0.5 mt-0.5"
                                   >
-                                    {folderRequests.map((req) => (
-                                      <RequestRow key={req.id} {...rowProps(req)} />
-                                    ))}
+                                    <AnimatePresence initial={false}>
+                                      {folderRequests.map((req) => (
+                                        <RequestRow key={req.id} {...rowProps(req)} />
+                                      ))}
+                                    </AnimatePresence>
                                     {folderRequests.length === 0 && (
                                       <div className="text-[11px] text-slate-600 py-1 pl-2">
                                         Empty folder
@@ -322,9 +346,11 @@ export const Sidebar = ({
                           );
                         })}
 
-                        {rootRequests.map((req) => (
-                          <RequestRow key={req.id} {...rowProps(req)} />
-                        ))}
+                        <AnimatePresence initial={false}>
+                          {rootRequests.map((req) => (
+                            <RequestRow key={req.id} {...rowProps(req)} />
+                          ))}
+                        </AnimatePresence>
 
                         {folders.length === 0 && rootRequests.length === 0 && (
                           <div className="text-[11px] text-slate-600 py-1 pl-2">

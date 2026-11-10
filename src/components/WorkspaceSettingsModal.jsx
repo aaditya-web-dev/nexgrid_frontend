@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { Modal, ErrorAlert, fieldClass } from './common/UIComponents';
+import { Modal, ErrorAlert, fieldClass, Avatar, timeAgo, useConfirm } from './common/UIComponents';
 import { workspacesApi, environmentsApi } from '../api';
 
 const TABS = [
@@ -44,6 +44,7 @@ export const WorkspaceSettingsModal = ({
   const [envName, setEnvName] = useState('');
   const [envIsDefault, setEnvIsDefault] = useState(false);
 
+  const confirm = useConfirm();
   const handleInvite = async (e) => {
     e.preventDefault();
     setError('');
@@ -77,7 +78,7 @@ export const WorkspaceSettingsModal = ({
   };
 
   const handleRemoveMember = async (memberUserId) => {
-    if (!confirm('Are you sure you want to remove this member?')) return;
+    if (!(await confirm({ title: 'Remove member', message: 'They will lose access to this workspace.', confirmLabel: 'Remove' }))) return;
     try {
       await workspacesApi.removeMember(workspace.id, memberUserId);
       onRefresh();
@@ -173,11 +174,12 @@ export const WorkspaceSettingsModal = ({
                   key={m.id}
                   className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-slate-950/50 border border-slate-800/80 text-xs"
                 >
-                  <div className="min-w-0">
-                    <span className="text-slate-100 font-medium">User #{m.user_id}</span>
-                    <span className="block text-slate-500 text-[10px] mt-0.5">
-                      Joined {new Date(m.joined_at).toLocaleDateString()}
-                    </span>
+                  <div className="min-w-0 flex items-center gap-2.5">
+                    <Avatar name={m.username || `User #${m.user_id}`} />
+                    <div className="min-w-0">
+                      <span className="text-slate-100 font-medium">{m.username || `User #${m.user_id}`}</span>
+                      <span className="block text-slate-500 text-[10px] mt-0.5">Joined {timeAgo(m.joined_at)}</span>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">

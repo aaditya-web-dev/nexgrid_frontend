@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Clock, FlaskConical, Pencil, Play, Sparkles, Trash2, X } from 'lucide-react';
 import { testCasesApi } from '../api';
-import { LoadingSpinner, ErrorAlert, SkeletonLines, fieldClass } from './common/UIComponents';
+import { LoadingSpinner, ErrorAlert, SkeletonLines, fieldClass, useConfirm } from './common/UIComponents';
 
 const CATEGORY_STYLES = {
   positive: { label: 'Positive', cls: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/25' },
@@ -101,8 +101,9 @@ const TestCaseCard = ({ tc, activeEnvironmentId, onUpdated, onDeleted }) => {
     }
   };
 
+  const confirm = useConfirm();
   const handleDelete = async () => {
-    if (!confirm(`Delete test case "${tc.name}"?`)) return;
+    if (!(await confirm({ title: 'Delete test case', message: `Delete "${tc.name}"? This cannot be undone.` }))) return;
     try {
       await testCasesApi.delete(tc.id);
       onDeleted(tc.id);

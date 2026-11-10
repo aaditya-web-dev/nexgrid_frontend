@@ -7,7 +7,7 @@ import { RequestEditor } from '../components/RequestEditor';
 import { PresenceBar } from '../components/PresenceBar';
 import { NotificationsDropdown } from '../components/NotificationsDropdown';
 import { WorkspaceSettingsModal } from '../components/WorkspaceSettingsModal';
-import { Modal, ErrorAlert, LoadingSpinner } from '../components/common/UIComponents';
+import { Modal, ErrorAlert, LoadingSpinner, Logo, useToast, useConfirm } from '../components/common/UIComponents';
 import { useWorkspaceSocket } from '../hooks/useWorkspaceSocket';
 import {
   workspacesApi,
@@ -19,6 +19,8 @@ import {
 
 export const Dashboard = () => {
   const { user, logout } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
 
   // Collaboration State
   const [incomingCommentEvent, setIncomingCommentEvent] = useState(null);
@@ -30,6 +32,7 @@ export const Dashboard = () => {
   const [activeRole, setActiveRole] = useState('viewer');
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
+  const [loadingContent, setLoadingContent] = useState(false);
 
   // Collections, Folders & Requests State
   const [collections, setCollections] = useState([]);
@@ -83,6 +86,7 @@ export const Dashboard = () => {
     if (!selectedRequest?.id) return;
     try {
       await locksApi.acquire(selectedRequest.id);
+      toast.success('Lock acquired. Others can now only view this request.');
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : 'Could not acquire lock');
@@ -93,6 +97,7 @@ export const Dashboard = () => {
     if (!selectedRequest?.id) return;
     try {
       await locksApi.release(selectedRequest.id);
+      toast.info('Lock released.');
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : 'Could not release lock');
@@ -123,6 +128,7 @@ export const Dashboard = () => {
   const handleSelectWorkspace = async (ws) => {
     setActiveWorkspace(ws);
     setSelectedRequest(null);
+    setLoadingContent(true);
 
     try {
       // Fetch members and calculate role
@@ -162,6 +168,8 @@ export const Dashboard = () => {
       console.error('Error fetching workspace content:', err);
       const detail = err.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : 'Failed to load workspace data');
+    } finally {
+      setLoadingContent(false);
     }
   };
 
@@ -234,6 +242,7 @@ export const Dashboard = () => {
       });
       await handleSelectWorkspace(activeWorkspace);
       setSelectedRequest(res.data);
+      toast.success('Request created');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create request');
     }
@@ -245,6 +254,7 @@ export const Dashboard = () => {
       const res = await requestsApi.update(requestId, payload);
       setSelectedRequest(res.data);
       // Update local cache
+      toast.success('Request saved');
       setRequestsByCollection((prev) => {
         const copy = { ...prev };
         Object.keys(copy).forEach((cid) => {
@@ -259,9 +269,10 @@ export const Dashboard = () => {
 
   // 8. Delete operations
   const handleDeleteCollection = async (colId) => {
-    if (!confirm('Are you sure you want to delete this collection?')) return;
+    if (!(await confirm({ title: 'Delete collection', message: 'This permanently deletes the collection and all of its requests.' }))) return;
     try {
       await collectionsApi.delete(colId);
+      toast.success('Collection deleted');
       handleSelectWorkspace(activeWorkspace);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete collection');
@@ -269,9 +280,10 @@ export const Dashboard = () => {
   };
 
   const handleDeleteRequest = async (reqId) => {
-    if (!confirm('Are you sure you want to delete this request?')) return;
+    if (!(await confirm({ title: 'Delete request', message: 'This permanently deletes the request. This cannot be undone.' }))) return;
     try {
       await requestsApi.delete(reqId);
+      toast.success('Request deleted');
       if (selectedRequest?.id === reqId) setSelectedRequest(null);
       handleSelectWorkspace(activeWorkspace);
     } catch (err) {
@@ -287,9 +299,7 @@ export const Dashboard = () => {
       {/* Top Navbar */}
       <header className="h-12 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-sm px-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-400/30 font-semibold flex items-center justify-center text-sm shrink-0">
-            N
-          </div>
+          <Logo size={26} wordmark={false} />
           <span className="font-semibold text-sm tracking-tight text-slate-100 truncate">
             {activeWorkspace?.name || 'Nexgrid Workspace'}
           </span>
@@ -360,6 +370,7 @@ export const Dashboard = () => {
               canEdit={canEdit}
               lockedRequests={lockedRequests}
               typingUsers={typingUsers}
+              loading={loadingContent && collections.length === 0}
             />
 
             {/* Main Center Editor */}
@@ -386,13 +397,22 @@ export const Dashboard = () => {
                 incomingCommentEvent={incomingCommentEvent}
               />
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-sm gap-3 p-8 text-center">
-                <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className="flex-1 flex flex-col items-center justify-center text-slate-500 text-sm gap-3 p-8 text-center bg-[radial-gradient(ellipse_at_center,rgb(14_165_233/0.05),transparent_60%)]"
+              >
+                <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 shadow-lg shadow-black/30 flex items-center justify-center">
                   <Zap className="w-5 h-5 text-sky-400" aria-hidden="true" />
                 </div>
-                <p className="text-slate-300 font-medium">No request open</p>
+                <p className="text-slate-200 font-semibold">No request open</p>
                 <p className="text-xs text-slate-500 max-w-xs">Select a request from the sidebar or create a new one to begin.</p>
-              </div>
+                <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-500">
+                  <span><kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">Enter</kbd> send</span>
+                  <span><kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">S</kbd> save</span>
+                </div>
+              </motion.div>
             )}
           </>
         )}

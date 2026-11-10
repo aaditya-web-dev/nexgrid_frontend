@@ -3,6 +3,14 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, Inbox } from 'lucide-react';
 import { ErrorAlert, SkeletonLines, LoadingSpinner } from './common/UIComponents';
 
+const stamps = new WeakMap();
+let stampCount = 0;
+const stampOf = (r) => {
+  if (!stamps.has(r)) stamps.set(r, ++stampCount);
+  return stamps.get(r);
+};
+const timeTone = (ms) => (ms < 300 ? 'text-emerald-400' : ms < 1000 ? 'text-amber-300' : 'text-rose-400');
+
 const RESPONSE_TABS = ['body', 'headers', 'cookies'];
 
 const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
@@ -126,11 +134,19 @@ export const ResponseViewer = ({ result, executing, error, onDismissError }) => 
 
         {hasResult && (
           <div className="flex items-center gap-2 text-[11px] font-mono">
-            <span className={`px-2 py-0.5 rounded border font-semibold ${statusTone(result.status_code)}`}>
+            <motion.span
+              key={`s-${stampOf(result)}`}
+              initial={{ scale: 1.35, opacity: 0.3 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+              className={`px-2 py-0.5 rounded border font-semibold ${statusTone(result.status_code)}`}
+            >
               {result.status_code ? `${result.status_code}` : 'Error'}
-            </span>
+            </motion.span>
             {result.response_time_ms != null && (
-              <span className="text-slate-400">{result.response_time_ms} ms</span>
+              <motion.span key={`t-${stampOf(result)}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className={timeTone(result.response_time_ms)}>
+                {result.response_time_ms} ms
+              </motion.span>
             )}
             {result.response_size_bytes != null && (
               <span className="text-slate-400">{formatSize(result.response_size_bytes)}</span>

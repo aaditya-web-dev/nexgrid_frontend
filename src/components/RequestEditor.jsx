@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Lock, Unlock, Save, Send, Pencil, Eye, EyeOff } from 'lucide-react';
+import { Lock, Unlock, Save, Send, Pencil, Eye, EyeOff, Wand2, CheckCircle2, AlertTriangle, ChevronDown } from 'lucide-react';
 import { LoadingSpinner, fieldClass } from './common/UIComponents';
+
+const METHOD_COLOR = {
+  GET: 'text-emerald-400', POST: 'text-amber-400', PUT: 'text-sky-400', PATCH: 'text-teal-300',
+  DELETE: 'text-rose-400', HEAD: 'text-cyan-300', OPTIONS: 'text-slate-300',
+};
+
+const jsonStatus = (text) => {
+  if (!text.trim()) return null;
+  try { JSON.parse(text); return { ok: true }; } catch (e) { return { ok: false, msg: e.message }; }
+};
 import { CommentPanel } from './CommentPanel';
 import { TestCasePanel } from './TestCasePanel';
 import { KeyValueTable } from './KeyValueTable';
@@ -114,6 +124,8 @@ export const RequestEditor = ({
   const [execError, setExecError] = useState('');
   const [resolvedPreview, setResolvedPreview] = useState(null);
   const typingTimerRef = useRef(null);
+  const splitRef = useRef(null);
+  const [split, setSplit] = useState(50);
 
   const isEffectivelyEditable = canEdit && !isLockedByOther;
 
@@ -187,6 +199,24 @@ export const RequestEditor = ({
     }
   };
 
+  const shortcutRef = useRef({});
+  shortcutRef.current = { handleExecute, handleSave };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === 'Enter') { e.preventDefault(); shortcutRef.current.handleExecute(); }
+      if (e.key.toLowerCase() === 's') { e.preventDefault(); shortcutRef.current.handleSave(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const bodyJson = draft.bodyType === 'json' ? jsonStatus(draft.body) : null;
+  const beautify = () => {
+    try { updateDraft({ body: JSON.stringify(JSON.parse(draft.body), null, 2) }); } catch { /* invalid JSON: leave as is */ }
+  };
+  const countOf = (rows) => rows.filter((r) => r.enabled && r.key).length;
+
   const updateRows = (field) => (idx, key, val) => {
     setDraft((prev) => {
       const rows = [...prev[field]];
@@ -200,6 +230,12 @@ export const RequestEditor = ({
 
   const removeRow = (field) => (idx) =>
     setDraft((prev) => ({ ...prev, [field]: prev[field].filter((_, i) => i !== idx) }));
+
+  const dragSplit = (e) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId) || !splitRef.current) return;
+    const rect = splitRef.current.getBoundingClientRect();
+    setSplit(Math.min(75, Math.max(25, ((e.clientX - rect.left) / rect.width) * 100)));
+  };
 
   const fieldInput = `${fieldClass} w-full font-mono`;
 
@@ -302,35 +338,37 @@ export const RequestEditor = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <select
-            value={draft.method}
-            disabled={!isEffectivelyEditable}
-            aria-label="HTTP method"
-            onChange={(e) => {
-              updateDraft({ method: e.target.value });
-              notifyTyping();
-            }}
-            className={`${fieldClass} px-3 py-2 font-mono font-semibold cursor-pointer`}
-          >
-            {METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="text"
-            value={draft.url}
-            disabled={!isEffectivelyEditable}
-            aria-label="Request URL"
-            onChange={(e) => {
-              updateDraft({ url: e.target.value });
-              notifyTyping();
-            }}
-            placeholder="Enter request URL or {{variable}}"
-            className={`${fieldClass} flex-1 min-w-0 px-3 py-2 font-mono`}
-          />
+          <div className="flex flex-1 min-w-0 items-stretch rounded-lg border border-slate-700 bg-slate-950 shadow-sm shadow-black/30 focus-within:border-sky-400/70 focus-within:ring-2 focus-within:ring-sky-400/20 transition">
+            <div className="relative shrink-0 border-r border-slate-800">
+              <select
+                value={draft.method}
+                disabled={!isEffectivelyEditable}
+                aria-label="HTTP method"
+                onChange={(e) => {
+                  updateDraft({ method: e.target.value });
+                  notifyTyping();
+                }}
+                className={`appearance-none bg-transparent pl-3 pr-7 py-2 h-full text-xs font-mono font-bold cursor-pointer focus:outline-none disabled:cursor-not-allowed ${METHOD_COLOR[draft.method] || 'text-slate-300'}`}
+              >
+                {METHODS.map((m) => (
+                  <option key={m} value={m} className="bg-slate-900 text-slate-100">{m}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+            </div>
+            <input
+              type="text"
+              value={draft.url}
+              disabled={!isEffectivelyEditable}
+              aria-label="Request URL"
+              onChange={(e) => {
+                updateDraft({ url: e.target.value });
+                notifyTyping();
+              }}
+              placeholder="Enter request URL or {{variable}}"
+              className="flex-1 min-w-0 bg-transparent px-3 py-2 text-xs font-mono text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            />
+          </div>
 
           <motion.button
             type="button"
@@ -338,7 +376,14 @@ export const RequestEditor = ({
             disabled={executing || !draft.url.trim()}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 rounded-md text-xs font-semibold cursor-pointer transition-colors min-w-20 justify-center"
+            animate={
+              executing
+                ? { boxShadow: ['0 0 0 0 rgba(56,189,248,0.55)', '0 0 0 9px rgba(56,189,248,0)'] }
+                : { boxShadow: '0 0 0 0 rgba(56,189,248,0)' }
+            }
+            transition={executing ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
+            title="Send (Ctrl/Cmd + Enter)"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 rounded-lg text-xs font-semibold cursor-pointer transition-colors min-w-24 justify-center shadow-sm shadow-sky-500/20"
           >
             {executing ? (
               <span className="w-3.5 h-3.5 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
@@ -368,8 +413,8 @@ export const RequestEditor = ({
         </AnimatePresence>
       </div>
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="flex-1 flex flex-col border-r border-slate-800 overflow-hidden min-w-0">
+      <div ref={splitRef} style={{ '--split': `${split}%` }} className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div className="flex-1 md:flex-none md:basis-[var(--split)] flex flex-col overflow-hidden min-w-0">
           <div className="flex items-center border-b border-slate-800 px-3 gap-1 text-xs font-medium overflow-x-auto">
             {TABS.map((t) => (
               <button
@@ -384,6 +429,11 @@ export const RequestEditor = ({
                 }`}
               >
                 {t}
+                {(t === 'params' || t === 'headers') && countOf(t === 'params' ? draft.queryParams : draft.headers) > 0 && (
+                  <span className="ml-1.5 px-1.5 py-px rounded-full bg-slate-800 text-[10px] text-sky-300 font-mono">
+                    {countOf(t === 'params' ? draft.queryParams : draft.headers)}
+                  </span>
+                )}
                 {activeTab === t && (
                   <motion.span
                     layoutId="editor-tab-indicator"
@@ -453,15 +503,33 @@ export const RequestEditor = ({
                     </div>
 
                     {draft.bodyType !== 'none' ? (
+                      <div className="space-y-2">
+                      {draft.bodyType === 'json' && (
+                        <div className="flex items-center justify-between text-[11px]">
+                          {bodyJson ? (
+                            bodyJson.ok ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-400"><CheckCircle2 className="w-3 h-3" /> Valid JSON</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-amber-300 min-w-0"><AlertTriangle className="w-3 h-3 shrink-0" /> <span className="truncate">{bodyJson.msg}</span></span>
+                            )
+                          ) : <span className="text-slate-500">JSON body</span>}
+                          <button type="button" onClick={beautify} disabled={!isEffectivelyEditable || !bodyJson?.ok}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-700 text-slate-300 hover:text-slate-100 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
+                            <Wand2 className="w-3 h-3" /> Beautify
+                          </button>
+                        </div>
+                      )}
                       <textarea
+                        spellCheck={false}
                         rows={12}
                         value={draft.body}
                         disabled={!isEffectivelyEditable}
                         aria-label="Request body"
                         onChange={(e) => updateDraft({ body: e.target.value })}
                         placeholder='{"key": "value"}'
-                        className={`${fieldClass} w-full p-3 font-mono leading-relaxed resize-y`}
+                        className={`${fieldClass} w-full p-3 font-mono leading-relaxed resize-y ${draft.bodyType === 'json' && bodyJson && !bodyJson.ok ? 'border-amber-400/50' : ''}`}
                       />
+                      </div>
                     ) : (
                       <div className="text-xs text-slate-500 py-6 text-center">This request has no body.</div>
                     )}
@@ -616,6 +684,16 @@ export const RequestEditor = ({
           </div>
         </div>
 
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panels"
+          title="Drag to resize, double-click to reset"
+          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+          onPointerMove={dragSplit}
+          onDoubleClick={() => setSplit(50)}
+          className="hidden md:block w-px bg-slate-800 relative shrink-0 cursor-col-resize before:absolute before:inset-y-0 before:-inset-x-1.5 before:content-[''] hover:bg-sky-400/70 active:bg-sky-400 transition-colors touch-none"
+        />
         <ResponseViewer
           result={executionResult}
           executing={executing}

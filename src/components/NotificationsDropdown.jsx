@@ -1,3 +1,4 @@
+import { timeAgo } from './common/UIComponents';
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bell, MessageSquare, Pin } from 'lucide-react';
@@ -144,7 +145,7 @@ export const NotificationsDropdown = ({ workspaceId, incomingNotification }) => 
                       <div className="flex-1 min-w-0">
                         <p className="line-clamp-2 leading-relaxed">{n.message}</p>
                         <span className="text-[10px] text-slate-500 mt-1 block">
-                          {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {timeAgo(n.created_at)}
                         </span>
                       </div>
                       {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0 mt-1.5" />}

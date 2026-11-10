@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Trash2 } from 'lucide-react';
 import { commentsApi } from '../api';
-import { LoadingSpinner, ErrorAlert } from './common/UIComponents';
+import { LoadingSpinner, ErrorAlert, Avatar, timeAgo, useConfirm, useToast } from './common/UIComponents';
 
-const formatTime = (value) =>
-  new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent }) => {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -104,9 +104,10 @@ export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent })
   };
 
   const handleDelete = async (commentId) => {
-    if (!confirm('Delete this comment?')) return;
+    if (!(await confirm({ title: 'Delete comment', message: 'This comment will be removed for everyone.' }))) return;
     try {
       await commentsApi.delete(commentId);
+      toast.success('Comment deleted');
       setComments((prev) => prev.filter((c) => c.id !== commentId && c.parent_comment_id !== commentId));
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete comment');
@@ -172,11 +173,13 @@ export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent })
                 >
                   <div className="flex items-center justify-between text-[11px]">
                     <div className="flex items-center gap-2 min-w-0">
+                      <Avatar name={root.username || `User #${root.user_id}`} />
                       <span className="font-semibold text-slate-100 truncate">
                         {root.username || `User #${root.user_id}`}
                       </span>
-                      <span className="text-slate-500 text-[10px] shrink-0">
-                        {formatTime(root.created_at)}
+                      {isAuthor && <span className="px-1.5 py-px rounded bg-sky-500/10 text-sky-300 text-[9px] font-semibold">YOU</span>}
+                      <span className="text-slate-500 text-[10px] shrink-0" title={new Date(root.created_at).toLocaleString()}>
+                        {timeAgo(root.created_at)}
                         {root.is_edited && ' (edited)'}
                       </span>
                     </div>
@@ -254,10 +257,11 @@ export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent })
                         <div key={reply.id} className="space-y-1">
                           <div className="flex items-center justify-between text-[10px]">
                             <div className="flex items-center gap-2 min-w-0">
+                              <Avatar size="sm" name={reply.username || `User #${reply.user_id}`} />
                               <span className="font-semibold text-slate-200 truncate">
                                 {reply.username || `User #${reply.user_id}`}
                               </span>
-                              <span className="text-slate-500 shrink-0">{formatTime(reply.created_at)}</span>
+                              <span className="text-slate-500 shrink-0">{timeAgo(reply.created_at)}</span>
                             </div>
                             {reply.user_id === currentUserId && (
                               <button
