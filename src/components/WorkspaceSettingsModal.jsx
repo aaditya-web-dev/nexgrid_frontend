@@ -1,6 +1,29 @@
 import React, { useState } from 'react';
-import { Modal, ErrorAlert, LoadingSpinner } from './common/UIComponents';
+import { Trash2 } from 'lucide-react';
+import { Modal, ErrorAlert, fieldClass } from './common/UIComponents';
 import { workspacesApi, environmentsApi } from '../api';
+
+const TABS = [
+  { id: 'members', label: 'Members' },
+  { id: 'envs', label: 'Environments' },
+];
+
+const Panel = ({ title, children, onSubmit }) => (
+  <form onSubmit={onSubmit} className="bg-slate-950/60 p-3.5 rounded-lg border border-slate-800 space-y-2.5">
+    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">{title}</span>
+    {children}
+  </form>
+);
+
+const SubmitButton = ({ children, disabled }) => (
+  <button
+    type="submit"
+    disabled={disabled}
+    className="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 rounded-md text-xs font-semibold cursor-pointer transition-colors"
+  >
+    {children}
+  </button>
+);
 
 export const WorkspaceSettingsModal = ({
   isOpen,
@@ -18,7 +41,6 @@ export const WorkspaceSettingsModal = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Environments management inside modal
   const [envName, setEnvName] = useState('');
   const [envIsDefault, setEnvIsDefault] = useState(false);
 
@@ -85,118 +107,102 @@ export const WorkspaceSettingsModal = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Workspace: ${workspace?.name || ''}`}>
       <div className="space-y-4">
-        {/* Role badge */}
-        <div className="flex items-center justify-between text-xs bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
-          <span className="text-slate-400">Your role:</span>
-          <span className="font-bold uppercase px-2 py-0.5 rounded-sm bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            {userRole || 'Viewer'}
+        <div className="flex items-center justify-between text-xs bg-slate-950/60 px-3 py-2.5 rounded-lg border border-slate-800">
+          <span className="text-slate-400">Your role</span>
+          <span className="font-semibold uppercase tracking-wide px-2 py-0.5 rounded bg-sky-400/10 text-sky-300 border border-sky-400/25">
+            {userRole || 'viewer'}
           </span>
         </div>
 
-        {/* Modal Navigation Tabs */}
-        <div className="flex border-b border-slate-800 gap-4 text-xs font-medium">
-          <button
-            onClick={() => setActiveTab('members')}
-            className={`pb-2 border-b-2 cursor-pointer transition-colors ${
-              activeTab === 'members'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Members ({members.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('envs')}
-            className={`pb-2 border-b-2 cursor-pointer transition-colors ${
-              activeTab === 'envs'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Environments
-          </button>
+        <div className="flex border-b border-slate-800 gap-5 text-xs font-medium">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`pb-2.5 border-b-2 -mb-px cursor-pointer transition-colors ${
+                activeTab === tab.id
+                  ? 'border-sky-400 text-sky-300'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+              {tab.id === 'members' && <span className="ml-1.5 text-slate-500">{members.length}</span>}
+            </button>
+          ))}
         </div>
 
         <ErrorAlert message={error} onDismiss={() => setError('')} />
         {success && (
-          <div className="p-2 text-xs bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 rounded-md">
+          <div className="px-3 py-2 text-xs bg-emerald-400/10 text-emerald-200 border border-emerald-400/25 rounded-md">
             {success}
           </div>
         )}
 
-        {/* Tab 1: Members */}
         {activeTab === 'members' && (
           <div className="space-y-4">
             {isOwner && (
-              <form onSubmit={handleInvite} className="bg-slate-800/40 p-3 rounded-lg border border-slate-800 space-y-2">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
-                  Invite Member
-                </span>
+              <Panel title="Invite member" onSubmit={handleInvite}>
                 <div className="flex gap-2">
                   <input
                     type="number"
                     required
-                    placeholder="User ID (e.g. 2)"
+                    placeholder="User ID"
+                    aria-label="User ID"
                     value={inviteUserId}
                     onChange={(e) => setInviteUserId(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-hidden"
+                    className={`${fieldClass} flex-1 min-w-0`}
                   />
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-hidden"
+                    aria-label="Role"
+                    className={`${fieldClass} cursor-pointer`}
                   >
                     <option value="viewer">Viewer</option>
                     <option value="editor">Editor</option>
                   </select>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-semibold cursor-pointer"
-                  >
-                    Invite
-                  </button>
+                  <SubmitButton disabled={loading}>Invite</SubmitButton>
                 </div>
-              </form>
+              </Panel>
             )}
 
-            {/* Members List */}
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
               {members.map((m) => (
                 <div
                   key={m.id}
-                  className="flex items-center justify-between p-2 rounded-md bg-slate-800/50 text-xs"
+                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-slate-950/50 border border-slate-800/80 text-xs"
                 >
-                  <div>
-                    <span className="text-slate-200 font-medium">User #{m.user_id}</span>
-                    <span className="text-slate-500 text-[10px] ml-2">
+                  <div className="min-w-0">
+                    <span className="text-slate-100 font-medium">User #{m.user_id}</span>
+                    <span className="block text-slate-500 text-[10px] mt-0.5">
                       Joined {new Date(m.joined_at).toLocaleDateString()}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {isOwner && m.role !== 'owner' ? (
                       <select
                         value={m.role}
+                        aria-label={`Role for user ${m.user_id}`}
                         onChange={(e) => handleRoleChange(m.user_id, e.target.value)}
-                        className="bg-slate-900 border border-slate-700 rounded-xs text-[11px] text-slate-200 px-1 py-0.5"
+                        className={`${fieldClass} py-1 px-2 cursor-pointer`}
                       >
                         <option value="editor">Editor</option>
                         <option value="viewer">Viewer</option>
                       </select>
                     ) : (
-                      <span className="text-[11px] uppercase font-bold text-slate-400">
-                        {m.role}
-                      </span>
+                      <span className="text-[10px] uppercase font-semibold tracking-wide text-slate-400">{m.role}</span>
                     )}
 
                     {isOwner && m.role !== 'owner' && (
                       <button
+                        type="button"
                         onClick={() => handleRemoveMember(m.user_id)}
-                        className="text-slate-500 hover:text-rose-400 text-xs px-1 cursor-pointer"
-                        title="Remove member"
+                        aria-label={`Remove user ${m.user_id}`}
+                        className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                       >
-                        ×
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -206,39 +212,30 @@ export const WorkspaceSettingsModal = ({
           </div>
         )}
 
-        {/* Tab 2: Environments */}
         {activeTab === 'envs' && (
-          <div className="space-y-4">
-            <form onSubmit={handleCreateEnvironment} className="bg-slate-800/40 p-3 rounded-lg border border-slate-800 space-y-2">
-              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
-                Create Environment
-              </span>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Production / Staging"
-                  value={envName}
-                  onChange={(e) => setEnvName(e.target.value)}
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-hidden"
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-semibold cursor-pointer"
-                >
-                  Create
-                </button>
-              </div>
-              <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={envIsDefault}
-                  onChange={(e) => setEnvIsDefault(e.target.checked)}
-                />
-                <span>Set as default workspace environment</span>
-              </label>
-            </form>
-          </div>
+          <Panel title="Create environment" onSubmit={handleCreateEnvironment}>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                required
+                placeholder="e.g. Production, Staging"
+                aria-label="Environment name"
+                value={envName}
+                onChange={(e) => setEnvName(e.target.value)}
+                className={`${fieldClass} flex-1 min-w-0`}
+              />
+              <SubmitButton>Create</SubmitButton>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={envIsDefault}
+                onChange={(e) => setEnvIsDefault(e.target.checked)}
+                className="w-3.5 h-3.5 accent-sky-500 cursor-pointer"
+              />
+              <span>Set as default environment for this workspace</span>
+            </label>
+          </Panel>
         )}
       </div>
     </Modal>

@@ -1,7 +1,53 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import { ErrorAlert, LoadingSpinner } from '../components/common/UIComponents';
+import { ErrorAlert, fieldClass } from '../components/common/UIComponents';
+
+const AuthShell = ({ title, subtitle, children, footer }) => (
+  <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      className="w-full max-w-sm"
+    >
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-sky-500/15 text-sky-300 font-semibold text-lg mb-4 border border-sky-400/30">
+          N
+        </div>
+        <h1 className="text-xl font-semibold text-slate-100 tracking-tight">{title}</h1>
+        <p className="text-sm text-slate-400 mt-1">{subtitle}</p>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl shadow-black/30">
+        {children}
+      </div>
+
+      <div className="mt-6 text-center text-sm text-slate-400">{footer}</div>
+    </motion.div>
+  </div>
+);
+
+const Field = ({ label, children }) => (
+  <div className="space-y-1.5">
+    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{label}</label>
+    {children}
+  </div>
+);
+
+const inputClass = `${fieldClass} w-full px-3 py-2.5 text-sm`;
+
+const SubmitButton = ({ loading, children }) => (
+  <button
+    type="submit"
+    disabled={loading}
+    className="w-full py-2.5 px-4 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 rounded-lg text-sm font-semibold transition-colors cursor-pointer flex justify-center items-center gap-2"
+  >
+    {loading && <span className="w-3.5 h-3.5 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />}
+    {children}
+  </button>
+);
 
 export const Login = () => {
   const { login } = useAuth();
@@ -33,64 +79,48 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600/20 text-indigo-400 font-bold text-xl mb-3 border border-indigo-500/30">
-            N
-          </div>
-          <h1 className="text-2xl font-bold text-slate-100">Welcome to Nexgrid</h1>
-          <p className="text-sm text-slate-400 mt-1">Collaborative API Testing Platform</p>
-        </div>
-
-        <ErrorAlert message={error} onDismiss={() => setError('')} />
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-1">
-              Username
-            </label>
-            <input
-              type="text"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 transition-colors"
-              placeholder="Enter your username"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 transition-colors"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer flex justify-center items-center"
-          >
-            {loading ? <LoadingSpinner size="sm" /> : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-400">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-indigo-400 hover:text-indigo-300 font-medium">
-            Sign up
+    <AuthShell
+      title="Sign in to Nexgrid"
+      subtitle="Collaborative API testing for your team"
+      footer={
+        <>
+          New to Nexgrid?{' '}
+          <Link to="/register" className="text-sky-300 hover:text-sky-200 font-medium transition-colors">
+            Create an account
           </Link>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <ErrorAlert message={error} onDismiss={() => setError('')} />
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Username">
+          <input
+            type="text"
+            required
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className={inputClass}
+            placeholder="Enter your username"
+          />
+        </Field>
+
+        <Field label="Password">
+          <input
+            type="password"
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClass}
+            placeholder="Enter your password"
+          />
+        </Field>
+
+        <SubmitButton loading={loading}>{loading ? 'Signing in...' : 'Sign in'}</SubmitButton>
+      </form>
+    </AuthShell>
   );
 };
 
@@ -134,98 +164,78 @@ export const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600/20 text-indigo-400 font-bold text-xl mb-3 border border-indigo-500/30">
-            N
-          </div>
-          <h1 className="text-2xl font-bold text-slate-100">Create an Account</h1>
-          <p className="text-sm text-slate-400 mt-1">Start collaborating with your team</p>
-        </div>
-
-        <ErrorAlert message={error} onDismiss={() => setError('')} />
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-1">
-              Username
-            </label>
-            <input
-              type="text"
-              name="username"
-              required
-              minLength={3}
-              maxLength={50}
-              value={formData.username}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 transition-colors"
-              placeholder="aaditya"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              required
-              value={formData.email}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 transition-colors"
-              placeholder="user@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-1">
-              Full Name (Optional)
-            </label>
-            <input
-              type="text"
-              name="full_name"
-              value={formData.full_name}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 transition-colors"
-              placeholder="Aaditya Pandey"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              name="password"
-              required
-              minLength={8}
-              maxLength={128}
-              value={formData.password}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-hidden focus:border-indigo-500 transition-colors"
-              placeholder="•••••••• (min 8 chars)"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer flex justify-center items-center"
-          >
-            {loading ? <LoadingSpinner size="sm" /> : 'Create Account'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-400">
+    <AuthShell
+      title="Create your account"
+      subtitle="Start collaborating with your team"
+      footer={
+        <>
           Already have an account?{' '}
-          <Link to="/login" className="text-indigo-400 hover:text-indigo-300 font-medium">
+          <Link to="/login" className="text-sky-300 hover:text-sky-200 font-medium transition-colors">
             Sign in
           </Link>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <ErrorAlert message={error} onDismiss={() => setError('')} />
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Username">
+          <input
+            type="text"
+            name="username"
+            required
+            minLength={3}
+            maxLength={50}
+            autoComplete="username"
+            value={formData.username}
+            onChange={handleChange}
+            className={inputClass}
+            placeholder="At least 3 characters"
+          />
+        </Field>
+
+        <Field label="Email">
+          <input
+            type="email"
+            name="email"
+            required
+            autoComplete="email"
+            value={formData.email}
+            onChange={handleChange}
+            className={inputClass}
+            placeholder="you@company.com"
+          />
+        </Field>
+
+        <Field label="Full name (optional)">
+          <input
+            type="text"
+            name="full_name"
+            autoComplete="name"
+            value={formData.full_name}
+            onChange={handleChange}
+            className={inputClass}
+            placeholder="Your name"
+          />
+        </Field>
+
+        <Field label="Password">
+          <input
+            type="password"
+            name="password"
+            required
+            minLength={8}
+            maxLength={128}
+            autoComplete="new-password"
+            value={formData.password}
+            onChange={handleChange}
+            className={inputClass}
+            placeholder="At least 8 characters"
+          />
+        </Field>
+
+        <SubmitButton loading={loading}>{loading ? 'Creating account...' : 'Create account'}</SubmitButton>
+      </form>
+    </AuthShell>
   );
 };

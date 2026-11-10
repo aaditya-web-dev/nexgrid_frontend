@@ -1,8 +1,92 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MethodBadge, LoadingSpinner, ErrorAlert } from './common/UIComponents';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Lock, Unlock, Save, Send, Pencil, Eye, EyeOff } from 'lucide-react';
+import { LoadingSpinner, fieldClass } from './common/UIComponents';
 import { CommentPanel } from './CommentPanel';
 import { TestCasePanel } from './TestCasePanel';
+import { KeyValueTable } from './KeyValueTable';
+import { ResponseViewer } from './ResponseViewer';
 import { requestsApi } from '../api';
+
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const BODY_TYPES = ['none', 'json', 'raw', 'x_www_form_urlencoded'];
+const TABS = ['params', 'headers', 'body', 'auth', 'preview', 'comments', 'tests'];
+
+const toRows = (obj) =>
+  Object.entries(obj || {}).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
+
+const toEditorState = (req) => {
+  const auth = req?.auth_config || {};
+  return {
+    name: req?.name || '',
+    description: req?.description || '',
+    method: req?.method || 'GET',
+    url: req?.url || '',
+    queryParams: toRows(req?.query_params),
+    headers: toRows(req?.headers),
+    bodyType: req?.body_type || 'none',
+    body: req?.body || '',
+    authType: req?.auth_type || 'none',
+    bearerToken: auth.token || '',
+    basicUser: auth.username || '',
+    basicPass: auth.password || '',
+    apiKeyName: auth.key || '',
+    apiKeyValue: auth.value || '',
+    apiKeyAddTo: auth.add_to || 'header',
+  };
+};
+
+const toObject = (rows) => {
+  const obj = {};
+  rows.filter((r) => r.enabled && r.key).forEach((r) => {
+    obj[r.key] = r.value;
+  });
+  return obj;
+};
+
+const buildPayload = (s) => {
+  let authConfig = {};
+  if (s.authType === 'bearer') authConfig = { token: s.bearerToken };
+  if (s.authType === 'basic') authConfig = { username: s.basicUser, password: s.basicPass };
+  if (s.authType === 'api_key') {
+    authConfig = { key: s.apiKeyName, value: s.apiKeyValue, add_to: s.apiKeyAddTo };
+  }
+
+  return {
+    name: s.name,
+    description: s.description,
+    method: s.method,
+    url: s.url,
+    query_params: toObject(s.queryParams),
+    headers: toObject(s.headers),
+    body_type: s.bodyType,
+    body: s.bodyType === 'none' ? null : s.body,
+    auth_type: s.authType,
+    auth_config: authConfig,
+  };
+};
+
+const SaveStatus = ({ canEdit, isEditable, isDirty }) => {
+  if (!canEdit) return null;
+  if (!isEditable) return <span className="text-[11px] text-slate-500">Read-only</span>;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
+        isDirty ? 'text-amber-300' : 'text-slate-500'
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${isDirty ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+      {isDirty ? 'Unsaved changes' : 'All changes saved'}
+    </span>
+  );
+};
+
+const Field = ({ label, children }) => (
+  <div className="space-y-1.5">
+    <label className="block text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{label}</label>
+    {children}
+  </div>
+);
 
 export const RequestEditor = ({
   request,
@@ -22,15 +106,24 @@ export const RequestEditor = ({
   onStopTyping,
   incomingCommentEvent = null,
 }) => {
-  const [method, setMethod] = useState(request?.method || 'GET');
-  const [url, setUrl] = useState(request?.url || '');
-  const [name, setName] = useState(request?.name || '');
-  const [description, setDescription] = useState(request?.description || '');
+  const [draft, setDraft] = useState(() => toEditorState(request));
   const [activeTab, setActiveTab] = useState('params');
-
+  const [showSecret, setShowSecret] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState(null);
+  const [execError, setExecError] = useState('');
+  const [resolvedPreview, setResolvedPreview] = useState(null);
   const typingTimerRef = useRef(null);
 
   const isEffectivelyEditable = canEdit && !isLockedByOther;
+
+  const savedPayload = useMemo(() => buildPayload(toEditorState(request)), [request]);
+  const currentPayload = buildPayload(draft);
+  const isDirty = JSON.stringify(currentPayload) !== JSON.stringify(savedPayload);
+
+  const updateDraft = (patch) => {
+    setDraft((prev) => ({ ...prev, ...patch }));
+  };
 
   const notifyTyping = () => {
     if (!onTyping || !request?.id) return;
@@ -41,97 +134,17 @@ export const RequestEditor = ({
     }, 1500);
   };
 
-  // Key-value pairs for Query Params & Headers
-  const [queryParams, setQueryParams] = useState([]);
-  const [headers, setHeaders] = useState([]);
-
-  // Body
-  const [bodyType, setBodyType] = useState(request?.body_type || 'none');
-  const [body, setBody] = useState(request?.body || '');
-
-  // Auth
-  const [authType, setAuthType] = useState(request?.auth_type || 'none');
-  const [bearerToken, setBearerToken] = useState(request?.auth_config?.token || '');
-  const [basicUser, setBasicUser] = useState(request?.auth_config?.username || '');
-  const [basicPass, setBasicPass] = useState(request?.auth_config?.password || '');
-  const [apiKeyName, setApiKeyName] = useState(request?.auth_config?.key || '');
-  const [apiKeyValue, setApiKeyValue] = useState(request?.auth_config?.value || '');
-  const [apiKeyAddTo, setApiKeyAddTo] = useState(request?.auth_config?.add_to || 'header');
-
-  // Execution States
-  const [executing, setExecuting] = useState(false);
-  const [executionResult, setExecutionResult] = useState(null);
-  const [execError, setExecError] = useState('');
-  const [resolvedPreview, setResolvedPreview] = useState(null);
-
-  // Sync state whenever selected request changes
   useEffect(() => {
-    if (request) {
-      setMethod(request.method || 'GET');
-      setUrl(request.url || '');
-      setName(request.name || '');
-      setDescription(request.description || '');
-      setBodyType(request.body_type || 'none');
-      setBody(request.body || '');
-      setAuthType(request.auth_type || 'none');
-
-      // Sync params
-      const qp = request.query_params || {};
-      setQueryParams(Object.entries(qp).map(([k, v]) => ({ key: k, value: String(v), enabled: true })));
-
-      // Sync headers
-      const hdrs = request.headers || {};
-      setHeaders(Object.entries(hdrs).map(([k, v]) => ({ key: k, value: String(v), enabled: true })));
-
-      // Sync auth
-      const auth = request.auth_config || {};
-      setBearerToken(auth.token || '');
-      setBasicUser(auth.username || '');
-      setBasicPass(auth.password || '');
-      setApiKeyName(auth.key || '');
-      setApiKeyValue(auth.value || '');
-      setApiKeyAddTo(auth.add_to || 'header');
-
-      setExecutionResult(null);
-      setExecError('');
-      setResolvedPreview(null);
-    }
+    if (!request) return;
+    setDraft(toEditorState(request));
+    setExecutionResult(null);
+    setExecError('');
+    setResolvedPreview(null);
   }, [request]);
-
-  const assemblePayload = () => {
-    const qpObj = {};
-    queryParams.filter((p) => p.enabled && p.key).forEach((p) => {
-      qpObj[p.key] = p.value;
-    });
-
-    const headerObj = {};
-    headers.filter((h) => h.enabled && h.key).forEach((h) => {
-      headerObj[h.key] = h.value;
-    });
-
-    let authConfig = {};
-    if (authType === 'bearer') authConfig = { token: bearerToken };
-    if (authType === 'basic') authConfig = { username: basicUser, password: basicPass };
-    if (authType === 'api_key') authConfig = { key: apiKeyName, value: apiKeyValue, add_to: apiKeyAddTo };
-
-    return {
-      name,
-      description,
-      method,
-      url,
-      query_params: qpObj,
-      headers: headerObj,
-      body_type: bodyType,
-      body: bodyType === 'none' ? null : body,
-      auth_type: authType,
-      auth_config: authConfig,
-    };
-  };
 
   const handleSave = () => {
     if (!isEffectivelyEditable) return;
-    const payload = assemblePayload();
-    onSave(request.id, payload);
+    onSave(request.id, currentPayload);
   };
 
   const handleExecute = async () => {
@@ -141,22 +154,18 @@ export const RequestEditor = ({
 
     try {
       if (request?.id) {
-        // Auto-save changes first if editable
         if (isEffectivelyEditable) {
-          await onSave(request.id, assemblePayload());
+          await onSave(request.id, currentPayload);
         }
-        // Direct call to FastAPI execution endpoint
         const res = await requestsApi.execute(request.id, activeEnvironmentId || null, 30.0);
         setExecutionResult(res.data);
       } else {
-        // Quick run ad-hoc endpoint
-        const payload = assemblePayload();
         const res = await requestsApi.quickRun({
-          url: payload.url,
-          method: payload.method,
-          headers: payload.headers,
-          query_params: payload.query_params,
-          body: payload.body,
+          url: currentPayload.url,
+          method: currentPayload.method,
+          headers: currentPayload.headers,
+          query_params: currentPayload.query_params,
+          body: currentPayload.body,
         });
         setExecutionResult(res.data);
       }
@@ -178,122 +187,132 @@ export const RequestEditor = ({
     }
   };
 
-  // Helper row managers for Key-Value Tables
-  const addParamRow = () => setQueryParams((prev) => [...prev, { key: '', value: '', enabled: true }]);
-  const updateParamRow = (index, field, val) => {
-    setQueryParams((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: val };
-      return copy;
+  const updateRows = (field) => (idx, key, val) => {
+    setDraft((prev) => {
+      const rows = [...prev[field]];
+      rows[idx] = { ...rows[idx], [key]: val };
+      return { ...prev, [field]: rows };
     });
   };
-  const removeParamRow = (index) => setQueryParams((prev) => prev.filter((_, i) => i !== index));
 
-  const addHeaderRow = () => setHeaders((prev) => [...prev, { key: '', value: '', enabled: true }]);
-  const updateHeaderRow = (index, field, val) => {
-    setHeaders((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: val };
-      return copy;
-    });
-  };
-  const removeHeaderRow = (index) => setHeaders((prev) => prev.filter((_, i) => i !== index));
+  const addRow = (field) => () =>
+    setDraft((prev) => ({ ...prev, [field]: [...prev[field], { key: '', value: '', enabled: true }] }));
+
+  const removeRow = (field) => (idx) =>
+    setDraft((prev) => ({ ...prev, [field]: prev[field].filter((_, i) => i !== idx) }));
+
+  const fieldInput = `${fieldClass} w-full font-mono`;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
-      {/* Top Header / URL Bar */}
-      <div className="p-4 border-b border-slate-800 bg-slate-900/40 flex flex-col gap-3">
-        {/* Lock Banner if locked by someone else */}
-        {isLockedByOther && (
-          <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/25 text-amber-300 rounded-md text-xs">
-            <span className="text-sm">🔒</span>
-            <span>
-              This request is currently being edited by <strong>{lockHolderName || 'another team member'}</strong>. It is locked in read-only mode to prevent edit conflicts.
-            </span>
-          </div>
-        )}
+    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden min-w-0">
+      <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex flex-col gap-3">
+        <AnimatePresence initial={false}>
+          {isLockedByOther && (
+            <motion.div
+              key="lock-banner"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/25 text-amber-200 rounded-lg text-xs leading-relaxed">
+                <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
+                <span>
+                  Being edited by <strong className="font-semibold">{lockHolderName || 'another team member'}</strong>.
+                  It is read-only until they release the lock.
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 flex-1 max-w-md">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <input
               type="text"
-              value={name}
+              value={draft.name}
               disabled={!isEffectivelyEditable}
+              aria-label="Request name"
               onChange={(e) => {
-                setName(e.target.value);
+                updateDraft({ name: e.target.value });
                 notifyTyping();
               }}
-              placeholder="Request Name"
-              className="bg-transparent text-sm font-semibold text-slate-100 border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-hidden px-1 py-0.5"
+              placeholder="Request name"
+              className="bg-transparent text-sm font-semibold text-slate-100 placeholder:text-slate-500 border-b border-transparent hover:border-slate-700 focus:border-sky-400 focus:outline-none px-1 py-0.5 min-w-0 max-w-sm disabled:cursor-not-allowed transition-colors"
             />
+            <SaveStatus canEdit={canEdit} isEditable={isEffectivelyEditable} isDirty={isDirty} />
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Environment Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700">
-              <span className="text-[11px] text-slate-400">Env:</span>
+            <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-md border border-slate-700">
+              <span className="text-[11px] text-slate-400">Env</span>
               <select
                 value={activeEnvironmentId || ''}
+                aria-label="Active environment"
                 onChange={(e) => onChangeEnvironment(e.target.value ? Number(e.target.value) : null)}
-                className="bg-transparent text-xs text-slate-200 focus:outline-hidden"
+                className="bg-transparent text-xs text-slate-200 cursor-pointer focus:outline-none"
               >
-                <option value="">No Environment</option>
+                <option value="">No environment</option>
                 {environments.map((env) => (
                   <option key={env.id} value={env.id}>
-                    {env.name} {env.is_default ? '★' : ''}
+                    {env.name} {env.is_default ? '(default)' : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Lock Controls */}
             {canEdit && (
               <>
                 {isLockedByMe ? (
                   <button
+                    type="button"
                     onClick={onReleaseLock}
-                    className="px-2.5 py-1 text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md cursor-pointer flex items-center gap-1 transition-colors"
                     title="Release lock to allow others to edit"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 rounded-md cursor-pointer transition-colors"
                   >
-                    <span>🔓</span> Release Lock
+                    <Unlock className="w-3.5 h-3.5" /> Release lock
                   </button>
                 ) : isLockedByOther ? (
-                  <span className="text-[11px] text-amber-400/80 font-medium px-2 py-1 flex items-center gap-1">
-                    <span>🔒</span> Locked
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-300">
+                    <Lock className="w-3.5 h-3.5" /> Locked
                   </span>
                 ) : (
                   <button
+                    type="button"
                     onClick={onAcquireLock}
-                    className="px-2.5 py-1 text-xs text-slate-300 hover:text-slate-100 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md cursor-pointer flex items-center gap-1 transition-colors"
                     title="Acquire exclusive editing lock"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:text-slate-50 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md cursor-pointer transition-colors"
                   >
-                    <span>🔒</span> Lock
+                    <Lock className="w-3.5 h-3.5" /> Lock
                   </button>
                 )}
-                <button
+                <motion.button
+                  type="button"
                   onClick={handleSave}
-                  disabled={!isEffectivelyEditable}
-                  className="px-3 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 rounded-md cursor-pointer transition-colors"
+                  disabled={!isEffectivelyEditable || !isDirty}
+                  whileTap={{ scale: 0.97 }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 disabled:bg-slate-800 disabled:text-slate-500 rounded-md cursor-pointer disabled:cursor-not-allowed transition-colors"
                 >
-                  Save
-                </button>
+                  <Save className="w-3.5 h-3.5" /> Save
+                </motion.button>
               </>
             )}
           </div>
         </div>
 
-        {/* URL Input Group */}
         <div className="flex items-center gap-2">
           <select
-            value={method}
+            value={draft.method}
             disabled={!isEffectivelyEditable}
+            aria-label="HTTP method"
             onChange={(e) => {
-              setMethod(e.target.value);
+              updateDraft({ method: e.target.value });
               notifyTyping();
             }}
-            className="bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs font-mono font-bold text-slate-200 focus:outline-hidden focus:border-indigo-500"
+            className={`${fieldClass} px-3 py-2 font-mono font-semibold cursor-pointer`}
           >
-            {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map((m) => (
+            {METHODS.map((m) => (
               <option key={m} value={m}>
                 {m}
               </option>
@@ -302,438 +321,307 @@ export const RequestEditor = ({
 
           <input
             type="text"
-            value={url}
+            value={draft.url}
             disabled={!isEffectivelyEditable}
+            aria-label="Request URL"
             onChange={(e) => {
-              setUrl(e.target.value);
+              updateDraft({ url: e.target.value });
               notifyTyping();
             }}
             placeholder="Enter request URL or {{variable}}"
-            className="flex-1 bg-slate-900 border border-slate-800 rounded-md px-3 py-2 text-xs font-mono text-slate-100 focus:outline-hidden focus:border-indigo-500"
+            className={`${fieldClass} flex-1 min-w-0 px-3 py-2 font-mono`}
           />
 
-          <button
+          <motion.button
+            type="button"
             onClick={handleExecute}
-            disabled={executing || !url.trim()}
-            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+            disabled={executing || !draft.url.trim()}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 rounded-md text-xs font-semibold cursor-pointer transition-colors min-w-20 justify-center"
           >
-            {executing ? <LoadingSpinner size="sm" /> : 'Send'}
-          </button>
+            {executing ? (
+              <span className="w-3.5 h-3.5 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5" /> Send
+              </>
+            )}
+          </motion.button>
         </div>
 
-        {/* Typing indicator */}
-        {typingUser && (
-          <div className="flex items-center gap-1.5 text-[11px] text-indigo-400 animate-pulse pl-1">
-            <span>✏️</span>
-            <span><strong>{typingUser}</strong> is typing...</span>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {typingUser && (
+            <motion.div
+              key="typing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-1.5 text-[11px] text-sky-300 pl-0.5"
+            >
+              <Pencil className="w-3 h-3 animate-pulse" aria-hidden="true" />
+              <span>
+                <strong className="font-semibold">{typingUser}</strong> is typing...
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Editor & Response Split View */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Left Side: Request Config Tabs */}
-        <div className="flex-1 flex flex-col border-r border-slate-800 overflow-hidden">
-          {/* Tabs bar */}
-          <div className="flex items-center border-b border-slate-800 px-4 bg-slate-900/30 gap-4 text-xs font-medium">
-            {['params', 'headers', 'body', 'auth', 'preview', 'comments', 'tests'].map((t) => (
+        <div className="flex-1 flex flex-col border-r border-slate-800 overflow-hidden min-w-0">
+          <div className="flex items-center border-b border-slate-800 px-3 gap-1 text-xs font-medium overflow-x-auto">
+            {TABS.map((t) => (
               <button
                 key={t}
+                type="button"
                 onClick={() => {
                   setActiveTab(t);
                   if (t === 'preview') handlePreviewResolve();
                 }}
-                className={`py-3 capitalize border-b-2 cursor-pointer transition-colors ${
-                  activeTab === t
-                    ? 'border-indigo-500 text-indigo-400'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                className={`relative px-2.5 py-3 capitalize whitespace-nowrap cursor-pointer transition-colors ${
+                  activeTab === t ? 'text-sky-300' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 {t}
+                {activeTab === t && (
+                  <motion.span
+                    layoutId="editor-tab-indicator"
+                    className="absolute left-2 right-2 -bottom-px h-0.5 bg-sky-400 rounded-full"
+                    transition={{ duration: 0.2 }}
+                  />
+                )}
               </button>
             ))}
           </div>
 
-          {/* Tab Contents */}
           <div className="flex-1 overflow-y-auto p-4">
-            {/* PARAMS TAB */}
-            {activeTab === 'params' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-semibold uppercase">Query Parameters</span>
-                  {canEdit && (
-                    <button
-                      onClick={addParamRow}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                    >
-                      + Add Param
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {queryParams.map((param, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={param.enabled}
-                        disabled={!canEdit}
-                        onChange={(e) => updateParamRow(idx, 'enabled', e.target.checked)}
-                        className="rounded-xs border-slate-700 bg-slate-800"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Key"
-                        value={param.key}
-                        disabled={!canEdit}
-                        onChange={(e) => updateParamRow(idx, 'key', e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-sm px-2 py-1 text-xs font-mono text-slate-200"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Value (or {{var}})"
-                        value={param.value}
-                        disabled={!canEdit}
-                        onChange={(e) => updateParamRow(idx, 'value', e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-sm px-2 py-1 text-xs font-mono text-slate-200"
-                      />
-                      {canEdit && (
-                        <button
-                          onClick={() => removeParamRow(idx)}
-                          className="text-slate-500 hover:text-rose-400 text-xs px-1 cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {queryParams.length === 0 && (
-                    <div className="text-xs text-slate-600 py-2">No query parameters configured.</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* HEADERS TAB */}
-            {activeTab === 'headers' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-semibold uppercase">Request Headers</span>
-                  {canEdit && (
-                    <button
-                      onClick={addHeaderRow}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                    >
-                      + Add Header
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {headers.map((h, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={h.enabled}
-                        disabled={!canEdit}
-                        onChange={(e) => updateHeaderRow(idx, 'enabled', e.target.checked)}
-                        className="rounded-xs border-slate-700 bg-slate-800"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Header"
-                        value={h.key}
-                        disabled={!canEdit}
-                        onChange={(e) => updateHeaderRow(idx, 'key', e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-sm px-2 py-1 text-xs font-mono text-slate-200"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Value"
-                        value={h.value}
-                        disabled={!canEdit}
-                        onChange={(e) => updateHeaderRow(idx, 'value', e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-sm px-2 py-1 text-xs font-mono text-slate-200"
-                      />
-                      {canEdit && (
-                        <button
-                          onClick={() => removeHeaderRow(idx)}
-                          className="text-slate-500 hover:text-rose-400 text-xs px-1 cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {headers.length === 0 && (
-                    <div className="text-xs text-slate-600 py-2">No custom headers configured.</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* BODY TAB */}
-            {activeTab === 'body' && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-4 text-xs">
-                  {['none', 'json', 'raw', 'x_www_form_urlencoded'].map((bt) => (
-                    <label key={bt} className="flex items-center gap-1.5 text-slate-300 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="bodyType"
-                        value={bt}
-                        checked={bodyType === bt}
-                        disabled={!canEdit}
-                        onChange={(e) => setBodyType(e.target.value)}
-                        className="text-indigo-600"
-                      />
-                      <span>{bt}</span>
-                    </label>
-                  ))}
-                </div>
-
-                {bodyType !== 'none' && (
-                  <textarea
-                    rows={12}
-                    value={body}
-                    disabled={!canEdit}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder='{"key": "value"}'
-                    className="w-full bg-slate-900 border border-slate-800 rounded-md p-3 font-mono text-xs text-slate-200 focus:outline-hidden focus:border-indigo-500"
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {activeTab === 'params' && (
+                  <KeyValueTable
+                    rows={draft.queryParams}
+                    canEdit={isEffectivelyEditable}
+                    onAdd={addRow('queryParams')}
+                    onUpdate={updateRows('queryParams')}
+                    onRemove={removeRow('queryParams')}
+                    keyPlaceholder="Key"
+                    valuePlaceholder="Value or {{variable}}"
+                    addLabel="Add param"
+                    emptyText="No query parameters yet."
                   />
                 )}
-              </div>
-            )}
 
-            {/* AUTH TAB */}
-            {activeTab === 'auth' && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Type:</span>
-                  <select
-                    value={authType}
-                    disabled={!canEdit}
-                    onChange={(e) => setAuthType(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 rounded-sm px-2 py-1 text-xs text-slate-200"
-                  >
-                    <option value="none">No Auth</option>
-                    <option value="bearer">Bearer Token</option>
-                    <option value="basic">Basic Auth</option>
-                    <option value="api_key">API Key</option>
-                  </select>
-                </div>
+                {activeTab === 'headers' && (
+                  <KeyValueTable
+                    rows={draft.headers}
+                    canEdit={isEffectivelyEditable}
+                    onAdd={addRow('headers')}
+                    onUpdate={updateRows('headers')}
+                    onRemove={removeRow('headers')}
+                    keyPlaceholder="Header"
+                    valuePlaceholder="Value"
+                    addLabel="Add header"
+                    emptyText="No custom headers yet."
+                  />
+                )}
 
-                {authType === 'bearer' && (
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-slate-400 uppercase">Token</label>
-                    <input
-                      type="text"
-                      placeholder="eyJhbG... or {{token}}"
-                      value={bearerToken}
-                      disabled={!canEdit}
-                      onChange={(e) => setBearerToken(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-sm p-2 text-xs font-mono text-slate-200"
-                    />
+                {activeTab === 'body' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1 p-0.5 w-fit rounded-md bg-slate-900 border border-slate-800">
+                      {BODY_TYPES.map((bt) => (
+                        <button
+                          key={bt}
+                          type="button"
+                          disabled={!isEffectivelyEditable}
+                          onClick={() => updateDraft({ bodyType: bt })}
+                          className={`px-2.5 py-1 text-[11px] font-medium rounded cursor-pointer transition-colors disabled:cursor-not-allowed ${
+                            draft.bodyType === bt
+                              ? 'bg-slate-700 text-slate-100'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {bt === 'x_www_form_urlencoded' ? 'form-urlencoded' : bt}
+                        </button>
+                      ))}
+                    </div>
+
+                    {draft.bodyType !== 'none' ? (
+                      <textarea
+                        rows={12}
+                        value={draft.body}
+                        disabled={!isEffectivelyEditable}
+                        aria-label="Request body"
+                        onChange={(e) => updateDraft({ body: e.target.value })}
+                        placeholder='{"key": "value"}'
+                        className={`${fieldClass} w-full p-3 font-mono leading-relaxed resize-y`}
+                      />
+                    ) : (
+                      <div className="text-xs text-slate-500 py-6 text-center">This request has no body.</div>
+                    )}
                   </div>
                 )}
 
-                {authType === 'basic' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-slate-400 uppercase">Username</label>
-                      <input
-                        type="text"
-                        value={basicUser}
-                        disabled={!canEdit}
-                        onChange={(e) => setBasicUser(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-sm p-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-400 uppercase">Password</label>
-                      <input
-                        type="password"
-                        value={basicPass}
-                        disabled={!canEdit}
-                        onChange={(e) => setBasicPass(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-sm p-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {authType === 'api_key' && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[11px] text-slate-400 uppercase">Key</label>
-                      <input
-                        type="text"
-                        placeholder="X-API-Key"
-                        value={apiKeyName}
-                        disabled={!canEdit}
-                        onChange={(e) => setApiKeyName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-sm p-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-400 uppercase">Value</label>
-                      <input
-                        type="text"
-                        placeholder="Key value"
-                        value={apiKeyValue}
-                        disabled={!canEdit}
-                        onChange={(e) => setApiKeyValue(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-sm p-2 text-xs font-mono text-slate-200"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-400 uppercase">Add To</label>
+                {activeTab === 'auth' && (
+                  <div className="space-y-4 max-w-lg">
+                    <Field label="Type">
                       <select
-                        value={apiKeyAddTo}
-                        disabled={!canEdit}
-                        onChange={(e) => setApiKeyAddTo(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-sm p-2 text-xs font-mono text-slate-200"
+                        value={draft.authType}
+                        disabled={!isEffectivelyEditable}
+                        onChange={(e) => updateDraft({ authType: e.target.value })}
+                        className={`${fieldClass} w-full px-2.5 py-2 cursor-pointer`}
                       >
-                        <option value="header">Header</option>
-                        <option value="query">Query Params</option>
+                        <option value="none">No auth</option>
+                        <option value="bearer">Bearer token</option>
+                        <option value="basic">Basic auth</option>
+                        <option value="api_key">API key</option>
                       </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+                    </Field>
 
-            {/* RESOLVE PREVIEW TAB */}
-            {activeTab === 'preview' && (
-              <div className="space-y-3 font-mono text-xs">
-                <p className="text-slate-400">Live preview with substituted environment variables:</p>
-                {resolvedPreview ? (
-                  <div className="bg-slate-900 p-3 rounded-md border border-slate-800 space-y-2">
-                    <div>
-                      <span className="text-indigo-400">URL: </span>
-                      <span className="text-slate-200">{resolvedPreview.resolved_url}</span>
-                    </div>
-                    <div>
-                      <span className="text-indigo-400">Headers: </span>
-                      <pre className="text-slate-300 mt-1">
-                        {JSON.stringify(resolvedPreview.resolved_headers, null, 2)}
-                      </pre>
-                    </div>
-                    {resolvedPreview.resolved_body && (
-                      <div>
-                        <span className="text-indigo-400">Body: </span>
-                        <pre className="text-slate-300 mt-1">{resolvedPreview.resolved_body}</pre>
+                    {draft.authType === 'bearer' && (
+                      <Field label="Token">
+                        <div className="relative">
+                          <input
+                            type={showSecret ? 'text' : 'password'}
+                            placeholder="eyJhbG... or {{token}}"
+                            value={draft.bearerToken}
+                            disabled={!isEffectivelyEditable}
+                            onChange={(e) => updateDraft({ bearerToken: e.target.value })}
+                            className={`${fieldInput} pr-9`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSecret((s) => !s)}
+                            aria-label={showSecret ? 'Hide token' : 'Show token'}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-200 cursor-pointer"
+                          >
+                            {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </Field>
+                    )}
+
+                    {draft.authType === 'basic' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Username">
+                          <input
+                            type="text"
+                            value={draft.basicUser}
+                            disabled={!isEffectivelyEditable}
+                            onChange={(e) => updateDraft({ basicUser: e.target.value })}
+                            className={fieldInput}
+                          />
+                        </Field>
+                        <Field label="Password">
+                          <input
+                            type="password"
+                            value={draft.basicPass}
+                            disabled={!isEffectivelyEditable}
+                            onChange={(e) => updateDraft({ basicPass: e.target.value })}
+                            className={fieldInput}
+                          />
+                        </Field>
+                      </div>
+                    )}
+
+                    {draft.authType === 'api_key' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Key">
+                          <input
+                            type="text"
+                            placeholder="X-API-Key"
+                            value={draft.apiKeyName}
+                            disabled={!isEffectivelyEditable}
+                            onChange={(e) => updateDraft({ apiKeyName: e.target.value })}
+                            className={fieldInput}
+                          />
+                        </Field>
+                        <Field label="Value">
+                          <input
+                            type="text"
+                            placeholder="Key value"
+                            value={draft.apiKeyValue}
+                            disabled={!isEffectivelyEditable}
+                            onChange={(e) => updateDraft({ apiKeyValue: e.target.value })}
+                            className={fieldInput}
+                          />
+                        </Field>
+                        <Field label="Add to">
+                          <select
+                            value={draft.apiKeyAddTo}
+                            disabled={!isEffectivelyEditable}
+                            onChange={(e) => updateDraft({ apiKeyAddTo: e.target.value })}
+                            className={`${fieldClass} w-full px-2.5 py-2 cursor-pointer`}
+                          >
+                            <option value="header">Header</option>
+                            <option value="query">Query params</option>
+                          </select>
+                        </Field>
                       </div>
                     )}
                   </div>
-                ) : (
-                  <LoadingSpinner size="sm" text="Resolving placeholders..." />
                 )}
-              </div>
-            )}
 
-            {/* COMMENTS TAB */}
-            {activeTab === 'comments' && (
-              <CommentPanel
-                requestId={request?.id}
-                currentUserId={currentUserId}
-                incomingCommentEvent={incomingCommentEvent}
-              />
-            )}
+                {activeTab === 'preview' && (
+                  <div className="space-y-3 font-mono text-xs">
+                    <p className="text-slate-400 font-sans">Resolved with the active environment's variables.</p>
+                    {resolvedPreview ? (
+                      <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 space-y-3">
+                        <div>
+                          <span className="text-sky-300 font-sans text-[11px] uppercase tracking-wider">URL</span>
+                          <p className="text-slate-200 mt-1 break-all">{resolvedPreview.resolved_url}</p>
+                        </div>
+                        <div>
+                          <span className="text-sky-300 font-sans text-[11px] uppercase tracking-wider">Headers</span>
+                          <pre className="text-slate-300 mt-1 whitespace-pre-wrap break-all">
+                            {JSON.stringify(resolvedPreview.resolved_headers, null, 2)}
+                          </pre>
+                        </div>
+                        {resolvedPreview.resolved_body && (
+                          <div>
+                            <span className="text-sky-300 font-sans text-[11px] uppercase tracking-wider">Body</span>
+                            <pre className="text-slate-300 mt-1 whitespace-pre-wrap break-all">{resolvedPreview.resolved_body}</pre>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <LoadingSpinner size="sm" text="Resolving placeholders..." />
+                    )}
+                  </div>
+                )}
 
-            {/* TESTS TAB */}
-            {activeTab === 'tests' && (
-              <TestCasePanel
-                requestId={request?.id}
-                activeEnvironmentId={activeEnvironmentId}
-                currentUserId={currentUserId}
-              />
-            )}
+                {activeTab === 'comments' && (
+                  <CommentPanel
+                    requestId={request?.id}
+                    currentUserId={currentUserId}
+                    incomingCommentEvent={incomingCommentEvent}
+                  />
+                )}
+
+                {activeTab === 'tests' && (
+                  <TestCasePanel
+                    requestId={request?.id}
+                    activeEnvironmentId={activeEnvironmentId}
+                    currentUserId={currentUserId}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
 
-        {/* Right Side: Live Response Panel */}
-        <div className="flex-1 flex flex-col bg-slate-900/20 overflow-hidden">
-          <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
-            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              Response
-            </span>
-
-            {executionResult && (
-              <div className="flex items-center gap-3 text-xs">
-                <span
-                  className={`font-mono font-bold px-2 py-0.5 rounded-sm ${
-                    executionResult.status_code && executionResult.status_code < 400
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-rose-500/20 text-rose-400'
-                  }`}
-                >
-                  Status: {executionResult.status_code || 'Err'}
-                </span>
-                {executionResult.response_time_ms && (
-                  <span className="text-slate-400 font-mono">
-                    {executionResult.response_time_ms} ms
-                  </span>
-                )}
-                {executionResult.response_size_bytes !== null && (
-                  <span className="text-slate-400 font-mono">
-                    {executionResult.response_size_bytes} bytes
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4">
-            <ErrorAlert message={execError} onDismiss={() => setExecError('')} />
-
-            {executing ? (
-              <div className="flex flex-col items-center justify-center h-full">
-                <LoadingSpinner size="lg" text="Calling endpoint..." />
-              </div>
-            ) : executionResult ? (
-              <div className="space-y-4">
-                {executionResult.error_message && (
-                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-sm">
-                    {executionResult.error_message}
-                  </div>
-                )}
-
-                <div>
-                  <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">
-                    Response Body
-                  </div>
-                  <pre className="p-3 bg-slate-900 border border-slate-800 rounded-md font-mono text-xs text-slate-200 overflow-x-auto max-h-96">
-                    {(() => {
-                      try {
-                        return JSON.stringify(
-                          JSON.parse(executionResult.response_body || '{}'),
-                          null,
-                          2
-                        );
-                      } catch {
-                        return executionResult.response_body || '(empty response body)';
-                      }
-                    })()}
-                  </pre>
-                </div>
-
-                {executionResult.response_headers && (
-                  <div>
-                    <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">
-                      Response Headers
-                    </div>
-                    <pre className="p-3 bg-slate-900 border border-slate-800 rounded-md font-mono text-xs text-slate-400 overflow-x-auto">
-                      {JSON.stringify(executionResult.response_headers, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-600 text-xs">
-                Click "Send" to execute this API request against the real backend
-              </div>
-            )}
-          </div>
-        </div>
+        <ResponseViewer
+          result={executionResult}
+          executing={executing}
+          error={execError}
+          onDismissError={() => setExecError('')}
+        />
       </div>
     </div>
   );

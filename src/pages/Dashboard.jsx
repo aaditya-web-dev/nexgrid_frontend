@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { LogOut, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/Sidebar';
 import { RequestEditor } from '../components/RequestEditor';
@@ -283,12 +285,12 @@ export const Dashboard = () => {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans">
       {/* Top Navbar */}
-      <header className="h-12 border-b border-slate-800 bg-slate-900/60 px-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-indigo-600/30 text-indigo-400 border border-indigo-500/40 font-bold flex items-center justify-center text-sm">
+      <header className="h-12 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-sm px-4 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-400/30 font-semibold flex items-center justify-center text-sm shrink-0">
             N
           </div>
-          <span className="font-bold text-sm tracking-wide text-slate-200">
+          <span className="font-semibold text-sm tracking-tight text-slate-100 truncate">
             {activeWorkspace?.name || 'Nexgrid Workspace'}
           </span>
           <PresenceBar
@@ -299,23 +301,28 @@ export const Dashboard = () => {
         </div>
 
         {/* User profile & actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <NotificationsDropdown
             workspaceId={activeWorkspace?.id}
             incomingNotification={incomingNotification}
           />
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-400">Signed in as:</span>
-            <span className="font-semibold text-slate-200">{user?.username}</span>
+          <div className="hidden md:flex items-center gap-2 text-xs">
+            <span className="text-slate-400">Signed in as</span>
+            <span className="font-medium text-slate-200">{user?.username}</span>
           </div>
 
-          <button
+          <motion.button
+            type="button"
             onClick={logout}
-            className="px-2.5 py-1 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 rounded-md transition-colors cursor-pointer"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ duration: 0.12 }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-rose-300 hover:bg-rose-500/10 border border-slate-700 hover:border-rose-500/30 rounded-md transition-colors cursor-pointer"
           >
+            <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
             Logout
-          </button>
+          </motion.button>
         </div>
       </header>
 
@@ -379,9 +386,12 @@ export const Dashboard = () => {
                 incomingCommentEvent={incomingCommentEvent}
               />
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
-                <span className="text-3xl">⚡</span>
-                <p>Select a request from the sidebar or create a new one to begin</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-sm gap-3 p-8 text-center">
+                <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-sky-400" aria-hidden="true" />
+                </div>
+                <p className="text-slate-300 font-medium">No request open</p>
+                <p className="text-xs text-slate-500 max-w-xs">Select a request from the sidebar or create a new one to begin.</p>
               </div>
             )}
           </>
@@ -416,7 +426,7 @@ export const Dashboard = () => {
               value={newWsName}
               onChange={(e) => setNewWsName(e.target.value)}
               placeholder="e.g. My API Team"
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
             />
           </div>
           <div>
@@ -428,12 +438,12 @@ export const Dashboard = () => {
               onChange={(e) => setNewWsDesc(e.target.value)}
               placeholder="Workspace purpose"
               rows={3}
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
             />
           </div>
           <button
             type="submit"
-            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-semibold cursor-pointer"
+            className="w-full py-2 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             Create Workspace
           </button>
@@ -457,7 +467,7 @@ export const Dashboard = () => {
               value={newColName}
               onChange={(e) => setNewColName(e.target.value)}
               placeholder="e.g. Authentication"
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
             />
           </div>
           <div>
@@ -469,12 +479,12 @@ export const Dashboard = () => {
               value={newColDesc}
               onChange={(e) => setNewColDesc(e.target.value)}
               placeholder="Module description"
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
             />
           </div>
           <button
             type="submit"
-            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-semibold cursor-pointer"
+            className="w-full py-2 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             Create Collection
           </button>
@@ -498,12 +508,12 @@ export const Dashboard = () => {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="e.g. Admin Endpoints"
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
             />
           </div>
           <button
             type="submit"
-            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-semibold cursor-pointer"
+            className="w-full py-2 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             Create Folder
           </button>

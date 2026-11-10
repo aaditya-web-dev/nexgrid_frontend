@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Trash2 } from 'lucide-react';
 import { commentsApi } from '../api';
 import { LoadingSpinner, ErrorAlert } from './common/UIComponents';
+
+const formatTime = (value) =>
+  new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent }) => {
   const [comments, setComments] = useState([]);
@@ -122,25 +127,24 @@ export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent })
     <div className="flex flex-col h-full space-y-4">
       <ErrorAlert message={error} onDismiss={() => setError('')} />
 
-      {/* New Root Comment Input */}
       <form onSubmit={handlePostComment} className="flex gap-2 shrink-0">
         <input
           type="text"
           value={newContent}
           onChange={(e) => setNewContent(e.target.value)}
           placeholder="Add a comment on this request..."
-          className="flex-1 bg-slate-900 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-indigo-500"
+          aria-label="New comment"
+          className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
         />
         <button
           type="submit"
           disabled={submitting || !newContent.trim()}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-md text-xs font-semibold cursor-pointer transition-colors"
+          className="px-4 py-2 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
         >
           Post
         </button>
       </form>
 
-      {/* Comments List */}
       <div className="flex-1 overflow-y-auto space-y-3 pr-1">
         {loading && comments.length === 0 ? (
           <div className="flex items-center justify-center py-8">
@@ -148,121 +152,133 @@ export const CommentPanel = ({ requestId, currentUserId, incomingCommentEvent })
           </div>
         ) : rootComments.length === 0 ? (
           <div className="text-center py-10 text-slate-500 text-xs">
-            No comments yet. Start the conversation!
+            No comments yet. Start the conversation.
           </div>
         ) : (
-          rootComments.map((root) => {
-            const replies = repliesByParent[root.id] || [];
-            const isAuthor = root.user_id === currentUserId;
+          <AnimatePresence initial={false}>
+            {rootComments.map((root) => {
+              const replies = repliesByParent[root.id] || [];
+              const isAuthor = root.user_id === currentUserId;
 
-            return (
-              <div
-                key={root.id}
-                className="bg-slate-900/60 border border-slate-800/80 rounded-lg p-3 space-y-2 text-xs"
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-200">
-                      {root.username || `User #${root.user_id}`}
-                    </span>
-                    <span className="text-slate-500 text-[10px]">
-                      {new Date(root.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                      {root.is_edited && ' (edited)'}
-                    </span>
+              return (
+                <motion.div
+                  key={root.id}
+                  layout="position"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="bg-slate-900/70 border border-slate-800 rounded-lg p-3 space-y-2 text-xs"
+                >
+                  <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold text-slate-100 truncate">
+                        {root.username || `User #${root.user_id}`}
+                      </span>
+                      <span className="text-slate-500 text-[10px] shrink-0">
+                        {formatTime(root.created_at)}
+                        {root.is_edited && ' (edited)'}
+                      </span>
+                    </div>
+
+                    {isAuthor && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(root.id)}
+                        className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        aria-label="Delete comment"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
 
-                  {isAuthor && (
+                  <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">{root.content}</p>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60">
                     <button
-                      onClick={() => handleDelete(root.id)}
-                      className="text-slate-500 hover:text-rose-400 cursor-pointer"
-                      title="Delete comment"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-
-                {/* Content */}
-                <p className="text-slate-300 whitespace-pre-wrap">{root.content}</p>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 pt-1 border-t border-slate-800/40">
-                  <button
-                    onClick={() => setReplyToId(replyToId === root.id ? null : root.id)}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer"
-                  >
-                    Reply
-                  </button>
-                </div>
-
-                {/* Inline Reply Form */}
-                {replyToId === root.id && (
-                  <div className="flex gap-2 pt-2">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={replyContent}
-                      onChange={(e) => setReplyContent(e.target.value)}
-                      placeholder={`Reply to ${root.username || 'comment'}...`}
-                      className="flex-1 bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-hidden"
-                    />
-                    <button
-                      onClick={() => handlePostReply(root.id)}
-                      disabled={submitting || !replyContent.trim()}
-                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-md text-[11px] font-semibold cursor-pointer"
+                      type="button"
+                      onClick={() => setReplyToId(replyToId === root.id ? null : root.id)}
+                      className="text-[11px] text-sky-300 hover:text-sky-200 font-medium cursor-pointer"
                     >
                       Reply
                     </button>
-                    <button
-                      onClick={() => {
-                        setReplyToId(null);
-                        setReplyContent('');
-                      }}
-                      className="px-2 py-1 text-slate-400 hover:text-slate-200 text-[11px] cursor-pointer"
-                    >
-                      Cancel
-                    </button>
                   </div>
-                )}
 
-                {/* Threaded Replies */}
-                {replies.length > 0 && (
-                  <div className="space-y-2 pl-3 border-l-2 border-slate-800 mt-2">
-                    {replies.map((reply) => (
-                      <div key={reply.id} className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px]">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-300">
-                              {reply.username || `User #${reply.user_id}`}
-                            </span>
-                            <span className="text-slate-500">
-                              {new Date(reply.created_at).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                          {reply.user_id === currentUserId && (
-                            <button
-                              onClick={() => handleDelete(reply.id)}
-                              className="text-slate-500 hover:text-rose-400 cursor-pointer"
-                            >
-                              ×
-                            </button>
-                          )}
+                  <AnimatePresence initial={false}>
+                    {replyToId === root.id && (
+                      <motion.div
+                        key="reply-form"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex gap-2 pt-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={replyContent}
+                            onChange={(e) => setReplyContent(e.target.value)}
+                            placeholder={`Reply to ${root.username || 'comment'}...`}
+                            aria-label="Reply"
+                            className="flex-1 bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20 transition"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handlePostReply(root.id)}
+                            disabled={submitting || !replyContent.trim()}
+                            className="px-2.5 py-1.5 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 rounded-md text-[11px] font-semibold cursor-pointer transition-colors"
+                          >
+                            Reply
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReplyToId(null);
+                              setReplyContent('');
+                            }}
+                            className="px-2 py-1.5 text-slate-400 hover:text-slate-200 text-[11px] cursor-pointer transition-colors"
+                          >
+                            Cancel
+                          </button>
                         </div>
-                        <p className="text-slate-300">{reply.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {replies.length > 0 && (
+                    <div className="space-y-2 pl-3 border-l-2 border-slate-800 mt-2">
+                      {replies.map((reply) => (
+                        <div key={reply.id} className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold text-slate-200 truncate">
+                                {reply.username || `User #${reply.user_id}`}
+                              </span>
+                              <span className="text-slate-500 shrink-0">{formatTime(reply.created_at)}</span>
+                            </div>
+                            {reply.user_id === currentUserId && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(reply.id)}
+                                className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                aria-label="Delete reply"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-slate-300 leading-relaxed">{reply.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         )}
       </div>
     </div>

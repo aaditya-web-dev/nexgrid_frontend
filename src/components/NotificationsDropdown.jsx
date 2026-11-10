@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Bell, MessageSquare, Pin } from 'lucide-react';
 import { notificationsApi } from '../api';
 
 export const NotificationsDropdown = ({ workspaceId, incomingNotification }) => {
@@ -73,64 +75,87 @@ export const NotificationsDropdown = ({ workspaceId, incomingNotification }) => 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        aria-expanded={isOpen}
+        className="relative p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
         title="Notifications"
       >
-        <span className="text-sm">🔔</span>
-        {unreadCount > 0 && (
-          <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-indigo-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center animate-bounce">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
+        <Bell className="w-4 h-4" />
+        <AnimatePresence>
+          {unreadCount > 0 && (
+            <motion.span
+              key="badge"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.4, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-sky-400 text-slate-950 rounded-full text-[9px] font-bold flex items-center justify-center"
+            >
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </button>
 
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl z-50 overflow-hidden text-xs">
-          <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
-            <span className="font-bold text-slate-200">Notifications</span>
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
-              >
-                Mark all read
-              </button>
-            )}
-          </div>
-
-          <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60">
-            {loading && notifications.length === 0 ? (
-              <div className="p-4 text-center text-slate-500">Loading...</div>
-            ) : notifications.length === 0 ? (
-              <div className="p-4 text-center text-slate-500">No notifications</div>
-            ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  onClick={() => !n.is_read && handleMarkOneRead(n.id)}
-                  className={`p-3 transition-colors cursor-pointer flex items-start gap-2 ${
-                    n.is_read ? 'bg-slate-950/40 text-slate-400' : 'bg-slate-850 text-slate-200 hover:bg-slate-800'
-                  }`}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-lg shadow-xl shadow-black/40 z-50 overflow-hidden text-xs"
+          >
+            <div className="px-3 py-2.5 border-b border-slate-800 flex items-center justify-between">
+              <span className="font-semibold text-slate-100">Notifications</span>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  className="text-[11px] font-medium text-sky-300 hover:text-sky-200 cursor-pointer"
                 >
-                  <span className="text-base shrink-0 mt-0.5">
-                    {n.type === 'comment_added' ? '💬' : '📌'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="line-clamp-2">{n.message}</p>
-                    <span className="text-[10px] text-slate-500 mt-1 block">
-                      {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  {!n.is_read && (
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-1" />
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+                  Mark all read
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/70">
+              {loading && notifications.length === 0 ? (
+                <div className="p-4 text-center text-slate-500">Loading...</div>
+              ) : notifications.length === 0 ? (
+                <div className="p-6 text-center text-slate-500">You are all caught up</div>
+              ) : (
+                notifications.map((n) => {
+                  const Icon = n.type === 'comment_added' ? MessageSquare : Pin;
+                  return (
+                    <button
+                      type="button"
+                      key={n.id}
+                      onClick={() => !n.is_read && handleMarkOneRead(n.id)}
+                      className={`w-full text-left p-3 transition-colors cursor-pointer flex items-start gap-2.5 ${
+                        n.is_read
+                          ? 'text-slate-500 hover:bg-slate-800/40'
+                          : 'text-slate-200 bg-sky-500/5 hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-sky-400" aria-hidden="true" />
+                      <div className="flex-1 min-w-0">
+                        <p className="line-clamp-2 leading-relaxed">{n.message}</p>
+                        <span className="text-[10px] text-slate-500 mt-1 block">
+                          {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0 mt-1.5" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
